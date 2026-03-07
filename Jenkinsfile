@@ -10,7 +10,7 @@ pipeline {
 
     environment {
         PROJECT_DIR       = 'C:\\Users\\madda\\customer-service'
-        PYTHON            = 'python'
+        PYTHON            = 'C:\\Users\\madda\\AppData\\Local\\Python\\bin\\python.exe'
         MVN               = 'mvn'
         EMAIL_OWNER       = 'maddalaharika@gmail.com'
         SMTP_HOST         = 'smtp.gmail.com'
