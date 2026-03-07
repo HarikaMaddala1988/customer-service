@@ -34,7 +34,7 @@ pipeline {
             steps {
                 echo "=== PHASE 1: AI Requirements Analysis ==="
                 dir("${PROJECT_DIR}") {
-                    bat "python jenkins_runner.py analysis --build-number %BUILD_NUMBER% --pr-title \"%PR_TITLE%\" --requirements \"%REQUIREMENTS%\""
+                    bat "\"%PYTHON%\" jenkins_runner.py analysis --build-number %BUILD_NUMBER% --pr-title \"%PR_TITLE%\" --requirements \"%REQUIREMENTS%\""
                 }
             }
         }
@@ -44,7 +44,7 @@ pipeline {
             steps {
                 echo "=== PHASE 2: Maven Compile ==="
                 dir("${PROJECT_DIR}") {
-                    bat "python jenkins_runner.py build --build-number %BUILD_NUMBER%"
+                    bat "\"%PYTHON%\" jenkins_runner.py build --build-number %BUILD_NUMBER%"
                 }
             }
         }
@@ -54,7 +54,7 @@ pipeline {
             steps {
                 echo "=== PHASE 3: Maven Verify (Tests + JaCoCo >= 80%) ==="
                 dir("${PROJECT_DIR}") {
-                    bat "python jenkins_runner.py test --build-number %BUILD_NUMBER%"
+                    bat "\"%PYTHON%\" jenkins_runner.py test --build-number %BUILD_NUMBER%"
                 }
             }
             post {
@@ -74,7 +74,7 @@ pipeline {
                 dir("${PROJECT_DIR}") {
                     script {
                         def out = bat(returnStdout: true,
-                            script: "python jenkins_runner.py ica --build-number %BUILD_NUMBER% --pr-title \"%PR_TITLE%\""
+                            script: "\"%PYTHON%\" jenkins_runner.py ica --build-number %BUILD_NUMBER% --pr-title \"%PR_TITLE%\""
                         ).trim()
                         echo out
                         if (out.contains('ICA_BLOCKED')) {
@@ -90,7 +90,7 @@ pipeline {
             steps {
                 echo "=== PHASE 5: Trigger Jules CI/CD Pipeline ==="
                 dir("${PROJECT_DIR}") {
-                    bat "python jenkins_runner.py pipeline --build-number %BUILD_NUMBER% --merge-sha \"%MERGE_SHA%\""
+                    bat "\"%PYTHON%\" jenkins_runner.py pipeline --build-number %BUILD_NUMBER% --merge-sha \"%MERGE_SHA%\""
                 }
             }
         }
@@ -102,7 +102,7 @@ pipeline {
                 dir("${PROJECT_DIR}") {
                     script {
                         def out = bat(returnStdout: true,
-                            script: "python jenkins_runner.py deploy --build-number %BUILD_NUMBER% --merge-sha \"%MERGE_SHA%\""
+                            script: "\"%PYTHON%\" jenkins_runner.py deploy --build-number %BUILD_NUMBER% --merge-sha \"%MERGE_SHA%\""
                         ).trim()
                         echo out
                         def depIdMatch     = out =~ /DEP_ID:(.+)/
@@ -120,7 +120,7 @@ pipeline {
             steps {
                 echo "=== PHASE 6b: QA Agent / Rollback ==="
                 dir("${PROJECT_DIR}") {
-                    bat "python jenkins_runner.py qa-gate --build-number %BUILD_NUMBER% --pr-number \"%PR_NUMBER%\" --pr-title \"%PR_TITLE%\" --merge-sha \"%MERGE_SHA%\" --deployment-id \"%DEPLOYMENT_ID%\" --deploy-status \"%DEPLOY_STATUS%\""
+                    bat "\"%PYTHON%\" jenkins_runner.py qa-gate --build-number %BUILD_NUMBER% --pr-number \"%PR_NUMBER%\" --pr-title \"%PR_TITLE%\" --merge-sha \"%MERGE_SHA%\" --deployment-id \"%DEPLOYMENT_ID%\" --deploy-status \"%DEPLOY_STATUS%\""
                 }
             }
         }
@@ -130,7 +130,7 @@ pipeline {
             steps {
                 echo "=== PHASE 8: Generate HTML + JSON Evidence Pack ==="
                 dir("${PROJECT_DIR}") {
-                    bat "python jenkins_runner.py evidence --build-number %BUILD_NUMBER%"
+                    bat "\"%PYTHON%\" jenkins_runner.py evidence --build-number %BUILD_NUMBER%"
                 }
             }
             post {
@@ -148,7 +148,7 @@ pipeline {
             steps {
                 echo "=== PHASE 9: Send SDLC Outcome Email ==="
                 dir("${PROJECT_DIR}") {
-                    bat "python jenkins_runner.py notify --build-number %BUILD_NUMBER% --pr-number \"%PR_NUMBER%\" --pr-title \"%PR_TITLE%\" --ica-decision AUTO_APPROVED --deploy-status \"%DEPLOY_STATUS%\""
+                    bat "\"%PYTHON%\" jenkins_runner.py notify --build-number %BUILD_NUMBER% --pr-number \"%PR_NUMBER%\" --pr-title \"%PR_TITLE%\" --ica-decision AUTO_APPROVED --deploy-status \"%DEPLOY_STATUS%\""
                 }
             }
         }
@@ -161,7 +161,7 @@ pipeline {
         failure {
             echo "SDLC Pipeline FAILED — sending failure notification..."
             dir("${PROJECT_DIR}") {
-                bat "python jenkins_runner.py notify --build-number %BUILD_NUMBER% --pr-number \"%PR_NUMBER%\" --pr-title \"%PR_TITLE%\" --ica-decision UNKNOWN --deploy-status pipeline_failed || echo Notification also failed."
+                bat "\"%PYTHON%\" jenkins_runner.py notify --build-number %BUILD_NUMBER% --pr-number \"%PR_NUMBER%\" --pr-title \"%PR_TITLE%\" --ica-decision UNKNOWN --deploy-status pipeline_failed || echo Notification also failed."
             }
         }
     }
