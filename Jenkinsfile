@@ -11,7 +11,7 @@ pipeline {
     environment {
         PROJECT_DIR       = 'C:\\Users\\madda\\customer-service'
         PYTHON            = 'C:\\Users\\madda\\AppData\\Local\\Python\\bin\\python.exe'
-        MVN               = 'mvn'
+        MVN_PATH          = 'C:\\Users\\madda\\.m2\\wrapper\\dists\\apache-maven-3.8.7-bin\\1ktonn2lleg549uah6ngl1r74r\\apache-maven-3.8.7\\bin\\mvn.cmd'
         EMAIL_OWNER       = 'maddalaharika@gmail.com'
         SMTP_HOST         = 'smtp.gmail.com'
         SMTP_PORT         = '587'
