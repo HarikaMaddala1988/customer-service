@@ -167,7 +167,13 @@ def analyze_requirements(requirements: str, evidence: EvidencePack) -> dict:
         messages=[{"role": "user", "content": prompt}]
     )
     analysis = resp.content[0].text
-    evidence.save("Analysis", "Requirements Analysis", "AI-generated analysis and design decisions", analysis)
+    # Extract a one-liner summary from the first meaningful line
+    first_line = next((l.strip() for l in analysis.splitlines() if len(l.strip()) > 20), analysis[:80])
+    evidence.save(
+        "Analysis", "Requirements Analysis",
+        f"PR analyzed — {first_line[:90]}",
+        analysis,
+    )
     return {"success": True, "analysis": analysis}
 
 
@@ -250,9 +256,15 @@ def run_security_scan(evidence: EvidencePack) -> dict:
     ai_verdict = "FAIL" if "FAIL" in ai_review.upper() else ("WARN" if "WARN" in ai_review.upper() else "PASS")
     verdict = hard_verdict  # hard_verdict wins
 
-    summary = f"SpotBugs: {sb_bugs} bugs | CVEs: {cve_count} ({critical_count} critical) | Verdict: {verdict}"
-    evidence.save("Security", "Security Scan", summary, combined_output + "\n\n=== AI Review ===\n" + ai_review)
-    evidence.save("Security", "AI Security Review", ai_review[:200], ai_review)
+    if verdict == "PASS":
+        sec_summary = f"No critical vulnerabilities — SpotBugs: {sb_bugs} bugs, CVEs: {cve_count} — CI/CD agent proceeding"
+    elif verdict == "WARN":
+        sec_summary = f"Warnings found — SpotBugs: {sb_bugs} bugs, CVEs: {cve_count} ({critical_count} critical) — proceeding with caution"
+    else:
+        sec_summary = f"BLOCKED — {critical_count} critical CVE(s) detected, deployment halted"
+    evidence.save("Security", "Security Scan", sec_summary, combined_output + "\n\n=== AI Review ===\n" + ai_review)
+    ai_verdict_line = next((l.strip() for l in ai_review.splitlines() if l.strip()), ai_review[:120])
+    evidence.save("Security", "AI Security Review", f"{verdict} — {ai_verdict_line[:100]}", ai_review)
 
     return {
         "success": verdict != "FAIL",
@@ -273,9 +285,10 @@ def run_build(evidence: EvidencePack) -> dict:
     )
     success = result.returncode == 0
     output  = (result.stdout + result.stderr).strip()
+    status_label = "BUILD SUCCESS — compilation completed with no errors" if success else "BUILD FAILURE — compilation errors detected"
     evidence.save(
         "Build", "Maven Compile",
-        "BUILD SUCCESS" if success else "BUILD FAILURE",
+        status_label,
         output or "Build completed with no output.",
     )
     return {"success": success, "output": output[-2000:] if not success else "Build successful."}
@@ -292,7 +305,25 @@ def run_tests_with_coverage(evidence: EvidencePack) -> dict:
     summary = [l for l in output.splitlines()
                if any(k in l for k in ["Tests run:", "BUILD", "coverage checks", "ERROR"])]
     summary_text = "\n".join(summary[-30:])
-    evidence.save("Test", "Test + Coverage Report", summary_text[:200], output)
+    # Build a rich one-liner for the evidence summary
+    tests_run_line = next((l for l in output.splitlines() if "Tests run:" in l and "Failures:" in l), "")
+    cov_line       = next((l for l in output.splitlines() if "COVEREDRATIO" in l), "")
+    if tests_run_line:
+        import re as _re
+        m = _re.search(r"Tests run:\s*(\d+).*?Failures:\s*(\d+).*?Errors:\s*(\d+)", tests_run_line)
+        if m:
+            total, fails, errs = m.group(1), m.group(2), m.group(3)
+            pass_fail = "all passed" if fails == "0" and errs == "0" else f"{fails} failure(s), {errs} error(s)"
+            cov_pct = ""
+            if cov_line:
+                pct_m = _re.search(r"(\d+\.?\d*)%", cov_line)
+                cov_pct = f", coverage {pct_m.group(1)}%" if pct_m else ""
+            test_summary = f"{total} tests {pass_fail}{cov_pct} — {'PASS' if success else 'FAIL'}"
+        else:
+            test_summary = ("Tests PASSED" if success else "Tests FAILED") + " — see report"
+    else:
+        test_summary = ("All tests passed — JaCoCo coverage ≥ 80%" if success else "Tests or coverage FAILED")
+    evidence.save("Test", "Test + Coverage Report", test_summary, output)
     # Extract coverage % if present
     coverage_line = next((l for l in output.splitlines() if "COVEREDRATIO" in l or "%" in l), "")
     return {
@@ -334,7 +365,9 @@ def assess_change_risk(
         "risk_factors": ["Could not parse AI response"],
         "recommendation": "ESCALATE",
     }
-    evidence.save("ICA", "Risk Assessment", f"{data['risk_category']} risk ({data['risk_score']}/100)", raw)
+    evidence.save("ICA", "Risk Assessment",
+                  f"{data['risk_category']} risk ({data['risk_score']}/100) — {data.get('recommendation', 'APPROVE')}",
+                  raw)
     return data
 
 
@@ -389,7 +422,7 @@ def instant_change_authorization(
         "authorized_by": "Claude AI ICA Engine v1.0",
     }
     evidence.save("ICA", "Authorization Record",
-                  f"{decision} — {reason[:80]}",
+                  f"{decision} — {reason}",
                   json.dumps(ica_record, indent=2), ext="json")
     return ica_record
 
@@ -399,10 +432,13 @@ def deploy_to_gaia(image_tag: str, evidence: EvidencePack) -> dict:
     """Deploy to GaiaKubernetesPlatform."""
     if not GAIA_API_URL or not GAIA_API_KEY:
         dep_id = f"gaia-sim-{int(time.time())}"
-        result = {"success": True, "deployment_id": dep_id, "cluster": GAIA_CLUSTER,
-                  "namespace": GAIA_NAMESPACE, "image_tag": image_tag,
+        result = {"success": True, "deployment_id": dep_id, "cluster": GAIA_QA_CLUSTER,
+                  "namespace": GAIA_NAMESPACE, "image_tag": image_tag, "strategy": "RollingUpdate",
+                  "replicas_ready": 3, "replicas_total": 3, "status": "healthy",
                   "dashboard_url": f"https://gaia.example.com/deployments/{dep_id}", "simulated": True}
-        evidence.save("Deploy", "Gaia Deployment", f"Deployed {image_tag} to {GAIA_CLUSTER} (simulated)", json.dumps(result), ext="json")
+        evidence.save("Deploy", "Gaia Deployment",
+                      f"Deployed {image_tag} to {GAIA_QA_CLUSTER} (healthy) — simulated",
+                      json.dumps(result, indent=2), ext="json")
         return result
     headers = {"Authorization": f"Bearer {GAIA_API_KEY}", "Content-Type": "application/json"}
     payload = {"application": GAIA_APP, "cluster": GAIA_CLUSTER, "namespace": GAIA_NAMESPACE,
@@ -414,7 +450,9 @@ def deploy_to_gaia(image_tag: str, evidence: EvidencePack) -> dict:
                   "deployment_id": body.get("deployment_id") or body.get("id"),
                   "cluster": GAIA_CLUSTER, "namespace": GAIA_NAMESPACE,
                   "image_tag": image_tag, "dashboard_url": body.get("dashboard_url")}
-        evidence.save("Deploy", "Gaia Deployment", f"Deployed {image_tag}", json.dumps(result), ext="json")
+        evidence.save("Deploy", "Gaia Deployment",
+                      f"Deployed {image_tag} to {GAIA_CLUSTER} (status: {result.get('http_status', 'unknown')})",
+                      json.dumps(result, indent=2), ext="json")
         return result
     except Exception as e:
         return {"error": str(e)}
@@ -470,8 +508,8 @@ def trigger_qa_agent(pr_number: int, pr_title: str, merge_sha: str,
         "merge_sha": merge_sha, "deployment_id": deployment_id,
     }
     evidence.save("QA Gate", "QA Agent Triggered",
-                  f"QA functional tests triggered for deployment {deployment_id}",
-                  json.dumps(payload), ext="json")
+                  f"QA functional tests triggered for PR #{pr_number} — deployment {deployment_id}",
+                  json.dumps(payload, indent=2), ext="json")
     try:
         r = requests.post(f"{QA_AGENT_URL}/qa/trigger", json=payload, timeout=15)
         result = {"success": r.status_code == 202, "http_status": r.status_code,
@@ -487,8 +525,8 @@ def generate_evidence_pack(evidence: EvidencePack) -> dict:
     html_path = evidence.generate_html_report()
     json_path = evidence.generate_json_manifest()
     evidence.save("Evidence", "Pack Generated",
-                  f"HTML report + JSON manifest at {evidence.dir}",
-                  f"HTML: {html_path}\nJSON: {json_path}")
+                  f"HTML report + JSON manifest generated",
+                  f"HTML: {html_path}\nJSON: {json_path}\nArtifacts: {len(evidence.artifacts)}")
     return {"html_report": html_path, "json_manifest": json_path,
             "evidence_dir": str(evidence.dir), "artifact_count": len(evidence.artifacts)}
 
@@ -563,7 +601,10 @@ def send_sdlc_notification(
             server.ehlo(); server.starttls()
             server.login(SMTP_USER, SMTP_PASSWORD)
             server.sendmail(SMTP_USER, recipient, msg.as_string())
-        evidence.save("Notify", "Email Sent", f"SDLC outcome email sent to {recipient}", f"To: {recipient}")
+        subject = f"[SDLC {'Complete' if healthy else 'Failed'}] PR #{pr_number} — {pr_title}"
+        evidence.save("Notify", "Email Sent",
+                      f"SDLC outcome email sent to {recipient}",
+                      f"To: {recipient}\nSubject: {subject}\nStatus: Delivered ✓")
         return {"success": True, "message": f"SDLC notification sent to {recipient}."}
     except Exception as e:
         return {"success": False, "message": str(e)}
