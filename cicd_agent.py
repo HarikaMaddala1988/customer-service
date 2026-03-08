@@ -397,7 +397,7 @@ def assess_change_risk(
     try:
         start = raw.find("{")
         end   = raw.rfind("}") + 1
-        data  = json.loads(raw[start:end]) if start >= 0 else _fallback
+        data  = json.loads(raw[start:end]) if 0 <= start < end else _fallback
     except Exception:
         data = _fallback
     # Guard against missing keys in Claude's response
