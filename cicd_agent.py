@@ -87,26 +87,63 @@ client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 # ---------------------------------------------------------------------------
 
 class EvidencePack:
-    def __init__(self, run_id: str):
+    def __init__(self, run_id: str, pr_number: int = 0, pr_title: str = ""):
         self.run_id    = run_id
-        self.started   = datetime.now(timezone.utc).isoformat()
-        self.artifacts = []   # list of {phase, type, summary, file}
         self.dir       = EVIDENCE_DIR / run_id
         self.dir.mkdir(parents=True, exist_ok=True)
+
+        # Load existing state from manifest so all phases share one artifact list
+        manifest_path = self.dir / "manifest.json"
+        if manifest_path.exists():
+            try:
+                saved = json.loads(manifest_path.read_text(encoding="utf-8"))
+                self.started   = saved.get("started", datetime.now(timezone.utc).isoformat())
+                self.artifacts = saved.get("artifacts", [])
+                self.pr_number = saved.get("pr_number", pr_number)
+                self.pr_title  = saved.get("pr_title",  pr_title)
+            except Exception:
+                self.started   = datetime.now(timezone.utc).isoformat()
+                self.artifacts = []
+                self.pr_number = pr_number
+                self.pr_title  = pr_title
+        else:
+            self.started   = datetime.now(timezone.utc).isoformat()
+            self.artifacts = []
+            self.pr_number = pr_number
+            self.pr_title  = pr_title
 
     def save(self, phase: str, artifact_type: str, summary: str, content: str, ext: str = "txt") -> str:
         fname = f"{phase.lower().replace(' ', '_')}_{artifact_type.lower().replace(' ', '_')}.{ext}"
         fpath = self.dir / fname
         fpath.write_text(content, encoding="utf-8")
+        # Replace existing entry for same phase+type so re-runs don't duplicate rows
+        key = (phase, artifact_type)
+        self.artifacts = [a for a in self.artifacts if (a["phase"], a["type"]) != key]
         self.artifacts.append({
             "phase": phase, "type": artifact_type,
             "summary": summary, "file": str(fpath),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
+        # Persist immediately so the next phase process can reload it
+        self._flush_manifest()
         log.info("[Evidence] %s / %s → %s", phase, artifact_type, fpath)
         return str(fpath)
 
+    def _flush_manifest(self):
+        manifest = {
+            "run_id":    self.run_id,
+            "started":   self.started,
+            "completed": datetime.now(timezone.utc).isoformat(),
+            "pr_number": self.pr_number,
+            "pr_title":  self.pr_title,
+            "artifacts": self.artifacts,
+        }
+        (self.dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
     def generate_html_report(self) -> str:
+        pr_info = ""
+        if self.pr_number or self.pr_title:
+            pr_info = f" &nbsp;|&nbsp; <b>PR #{self.pr_number}:</b> {self.pr_title}"
         rows = "".join(
             f"<tr><td>{a['timestamp'][:19]}</td><td><b>{a['phase']}</b></td>"
             f"<td>{a['type']}</td><td>{a['summary']}</td></tr>"
@@ -127,8 +164,8 @@ class EvidencePack:
 </style>
 </head><body>
 <h1>🤖 AI-First Agentic SDLC — Evidence Pack</h1>
-<p><b>Run ID:</b> {self.run_id} &nbsp;|&nbsp; <b>Started:</b> {self.started}</p>
-<h2>Phase Artifacts</h2>
+<p><b>Run ID:</b> {self.run_id} &nbsp;|&nbsp; <b>Started:</b> {self.started}{pr_info}</p>
+<h2>Phase Artifacts ({len(self.artifacts)})</h2>
 <table>
   <tr><th>Timestamp</th><th>Phase</th><th>Artifact</th><th>Summary</th></tr>
   {rows}
@@ -140,15 +177,8 @@ class EvidencePack:
         return str(out)
 
     def generate_json_manifest(self) -> str:
-        manifest = {
-            "run_id": self.run_id,
-            "started": self.started,
-            "completed": datetime.now(timezone.utc).isoformat(),
-            "artifacts": self.artifacts,
-        }
-        out = self.dir / "manifest.json"
-        out.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-        return str(out)
+        self._flush_manifest()
+        return str(self.dir / "manifest.json")
 
 
 # ---------------------------------------------------------------------------

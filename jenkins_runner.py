@@ -40,12 +40,14 @@ from cicd_agent import (
 )
 
 
-def get_evidence(build_number: str) -> EvidencePack:
-    return EvidencePack(f"jenkins-run-{build_number}")
+def get_evidence(args) -> EvidencePack:
+    pr_number = int(getattr(args, "pr_number", 0) or 0)
+    pr_title  = getattr(args, "pr_title", "") or ""
+    return EvidencePack(f"jenkins-run-{args.build_number}", pr_number=pr_number, pr_title=pr_title)
 
 
 def phase_analysis(args):
-    ev = get_evidence(args.build_number)
+    ev = get_evidence(args)
     req = args.requirements or args.pr_title
     result = analyze_requirements(req, ev)
     print("=== ANALYSIS COMPLETE ===")
@@ -53,7 +55,7 @@ def phase_analysis(args):
 
 
 def phase_build(args):
-    ev = get_evidence(args.build_number)
+    ev = get_evidence(args)
     result = run_build(ev)
     print("=== BUILD ===")
     print(json.dumps(result))
@@ -64,7 +66,7 @@ def phase_build(args):
 
 
 def phase_test(args):
-    ev = get_evidence(args.build_number)
+    ev = get_evidence(args)
     result = run_tests_with_coverage(ev)
     print("=== TEST ===")
     print(json.dumps(result))
@@ -75,7 +77,7 @@ def phase_test(args):
 
 
 def phase_ica(args):
-    ev = get_evidence(args.build_number)
+    ev = get_evidence(args)
     risk = assess_change_risk(
         pr_title=args.pr_title,
         test_passed=True,
@@ -104,7 +106,7 @@ def phase_ica(args):
 
 
 def phase_security(args):
-    ev = get_evidence(args.build_number)
+    ev = get_evidence(args)
     result = run_security_scan(ev)
     print("SECURITY_VERDICT:" + result["verdict"])
     print("SPOTBUGS_BUGS:" + str(result["spotbugs_bugs"]))
@@ -119,7 +121,7 @@ def phase_security(args):
 
 
 def phase_deploy(args):
-    ev = get_evidence(args.build_number)
+    ev = get_evidence(args)
     dep = deploy_to_gaia(args.merge_sha, ev)
     print("DEPLOY_TRIGGERED:" + json.dumps(dep))
     dep_id = dep.get("deployment_id", "")
@@ -136,7 +138,7 @@ def phase_deploy(args):
 
 
 def phase_qa_gate(args):
-    ev = get_evidence(args.build_number)
+    ev = get_evidence(args)
     if args.deploy_status == "healthy":
         result = trigger_qa_agent(
             pr_number=int(args.pr_number),
@@ -153,7 +155,7 @@ def phase_qa_gate(args):
 
 
 def phase_evidence(args):
-    ev = get_evidence(args.build_number)
+    ev = get_evidence(args)
     result = generate_evidence_pack(ev)
     print("EVIDENCE_HTML:" + result["html_report"])
     print("EVIDENCE_JSON:" + result["json_manifest"])
@@ -161,7 +163,7 @@ def phase_evidence(args):
 
 
 def phase_notify(args):
-    ev = get_evidence(args.build_number)
+    ev = get_evidence(args)
     from pathlib import Path
     html_path = str(Path("evidence") / f"jenkins-run-{args.build_number}" / "evidence_report.html")
     ev_dir = str(Path("evidence") / f"jenkins-run-{args.build_number}")
