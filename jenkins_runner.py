@@ -33,6 +33,7 @@ from cicd_agent import (
     instant_change_authorization,
     rollback_gaia_deployment,
     run_build,
+    run_security_scan,
     run_tests_with_coverage,
     send_sdlc_notification,
     trigger_qa_agent,
@@ -102,6 +103,21 @@ def phase_ica(args):
 
 
 
+def phase_security(args):
+    ev = get_evidence(args.build_number)
+    result = run_security_scan(ev)
+    print("SECURITY_VERDICT:" + result["verdict"])
+    print("SPOTBUGS_BUGS:" + str(result["spotbugs_bugs"]))
+    print("CVE_COUNT:" + str(result["cve_count"]))
+    print("CRITICAL_CVES:" + str(result["critical_cves"]))
+    for issue in result.get("issues", []):
+        print("ISSUE:" + issue)
+    if not result.get("success"):
+        print("SECURITY_FAILED — critical CVEs detected. Blocking deployment.")
+        sys.exit(1)
+    print("SECURITY_PASSED")
+
+
 def phase_deploy(args):
     ev = get_evidence(args.build_number)
     dep = deploy_to_gaia(args.merge_sha, ev)
@@ -165,6 +181,7 @@ PHASES = {
     "analysis": phase_analysis,
     "build":    phase_build,
     "test":     phase_test,
+    "security": phase_security,
     "ica":      phase_ica,
     "deploy":   phase_deploy,
     "qa-gate":  phase_qa_gate,

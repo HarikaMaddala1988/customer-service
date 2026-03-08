@@ -67,10 +67,28 @@ pipeline {
             }
         }
 
-        // ── PHASE 4 — ICA ──────────────────────────────────────────────────
-        stage('Phase 4: ICA') {
+        // ── PHASE 4 — SECURITY & QUALITY SCAN ────────────────────────────
+        stage('Phase 4: Security Scan') {
             steps {
-                echo "=== PHASE 4: AI Risk Scoring + Instant Change Authorization ==="
+                echo "=== PHASE 4: SpotBugs + OWASP Dependency Check + AI Review ==="
+                dir("${PROJECT_DIR}") {
+                    script {
+                        def out = bat(returnStdout: true,
+                            script: "\"%PYTHON%\" jenkins_runner.py security --build-number %BUILD_NUMBER%"
+                        ).trim()
+                        echo out
+                        if (out.contains('SECURITY_FAILED')) {
+                            error("SECURITY SCAN FAILED — Critical CVEs detected. Deployment blocked.")
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── PHASE 5 — ICA ──────────────────────────────────────────────────
+        stage('Phase 5: ICA') {
+            steps {
+                echo "=== PHASE 5: AI Risk Scoring + Instant Change Authorization ==="
                 dir("${PROJECT_DIR}") {
                     script {
                         def out = bat(returnStdout: true,
@@ -85,8 +103,8 @@ pipeline {
             }
         }
 
-        // ── PHASE 5 — GAIA QA DEPLOYMENT ──────────────────────────────────
-        stage('Phase 5: Gaia QA Deploy') {
+        // ── PHASE 6 — GAIA QA DEPLOYMENT ──────────────────────────────────
+        stage('Phase 6: Gaia QA Deploy') {
             steps {
                 echo "=== PHASE 6: Deploy to Gaia QA Cluster ==="
                 dir("${PROJECT_DIR}") {
@@ -106,7 +124,7 @@ pipeline {
         }
 
         // ── PHASE 6b — QA GATE ─────────────────────────────────────────────
-        stage('Phase 6: QA Gate') {
+        stage('Phase 7: QA Gate') {
             steps {
                 echo "=== PHASE 6b: QA Agent / Rollback ==="
                 dir("${PROJECT_DIR}") {
@@ -116,7 +134,7 @@ pipeline {
         }
 
         // ── PHASE 8 — EVIDENCE PACK ────────────────────────────────────────
-        stage('Phase 7: Evidence Pack') {
+        stage('Phase 8: Evidence Pack') {
             steps {
                 echo "=== PHASE 8: Generate HTML + JSON Evidence Pack ==="
                 dir("${PROJECT_DIR}") {
@@ -134,7 +152,7 @@ pipeline {
         }
 
         // ── PHASE 9 — NOTIFY ───────────────────────────────────────────────
-        stage('Phase 8: Notify') {
+        stage('Phase 9: Notify') {
             steps {
                 echo "=== PHASE 9: Send SDLC Outcome Email ==="
                 dir("${PROJECT_DIR}") {

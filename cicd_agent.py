@@ -171,6 +171,88 @@ def analyze_requirements(requirements: str, evidence: EvidencePack) -> dict:
     return {"success": True, "analysis": analysis}
 
 
+def run_security_scan(evidence: EvidencePack) -> dict:
+    """
+    Phase 4b — Security & quality scan.
+    Runs SpotBugs (static analysis) + OWASP Dependency Check,
+    then uses Claude AI to summarise findings and assign a severity.
+    """
+    issues = []
+    combined_output = ""
+
+    # --- SpotBugs ---
+    sb = subprocess.run(
+        [MVN, "spotbugs:spotbugs", "-q"], cwd=PROJECT_DIR,
+        capture_output=True, text=True, timeout=180,
+    )
+    sb_output = (sb.stdout + sb.stderr).strip()
+    combined_output += f"=== SpotBugs ===\n{sb_output}\n"
+    # Parse bug count from XML if present
+    sb_xml = PROJECT_DIR / "target" / "spotbugs" / "spotbugsXml.xml"
+    sb_bugs = 0
+    if sb_xml.exists():
+        import xml.etree.ElementTree as ET
+        try:
+            tree = ET.parse(sb_xml)
+            sb_bugs = len(tree.findall(".//BugInstance"))
+            issues.append(f"SpotBugs: {sb_bugs} bug(s) found")
+        except Exception:
+            issues.append("SpotBugs: XML parse error")
+    else:
+        issues.append("SpotBugs: no XML report (may have 0 bugs)")
+
+    # --- OWASP Dependency Check ---
+    dc = subprocess.run(
+        [MVN, "dependency-check:check", "-q"], cwd=PROJECT_DIR,
+        capture_output=True, text=True, timeout=600,
+    )
+    dc_output = (dc.stdout + dc.stderr).strip()
+    combined_output += f"\n=== OWASP Dependency Check ===\n{dc_output}\n"
+    dc_json = PROJECT_DIR / "target" / "dependency-check" / "dependency-check-report.json"
+    cve_count, critical_count = 0, 0
+    if dc_json.exists():
+        try:
+            dc_data = json.loads(dc_json.read_text(encoding="utf-8"))
+            for dep in dc_data.get("dependencies", []):
+                for vuln in dep.get("vulnerabilities", []):
+                    cve_count += 1
+                    if vuln.get("severity", "").upper() == "CRITICAL":
+                        critical_count += 1
+            issues.append(f"OWASP: {cve_count} CVE(s) found ({critical_count} CRITICAL)")
+        except Exception:
+            issues.append("OWASP: JSON parse error")
+    else:
+        issues.append("OWASP: report not generated (likely first run — NVD data downloading)")
+
+    # --- AI Security Review ---
+    prompt = (
+        "You are an application security engineer. Review the following security scan results "
+        "for a Spring Boot microservice and provide: (1) severity verdict (PASS/WARN/FAIL), "
+        "(2) key findings, (3) recommended actions.\n\n"
+        f"Findings:\n" + "\n".join(issues) + "\n\nScan output (truncated):\n" + combined_output[-1500:]
+    )
+    resp = client.messages.create(
+        model=MODEL, max_tokens=600,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    ai_review = resp.content[0].text
+    verdict = "FAIL" if "FAIL" in ai_review.upper() else ("WARN" if "WARN" in ai_review.upper() else "PASS")
+
+    summary = f"SpotBugs: {sb_bugs} bugs | CVEs: {cve_count} ({critical_count} critical) | AI verdict: {verdict}"
+    evidence.save("Security", "Security Scan", summary, combined_output + "\n\n=== AI Review ===\n" + ai_review)
+    evidence.save("Security", "AI Security Review", ai_review[:200], ai_review)
+
+    return {
+        "success": verdict != "FAIL",
+        "verdict": verdict,
+        "spotbugs_bugs": sb_bugs,
+        "cve_count": cve_count,
+        "critical_cves": critical_count,
+        "issues": issues,
+        "ai_review": ai_review,
+    }
+
+
 def run_build(evidence: EvidencePack) -> dict:
     """Compile the project with Maven."""
     result = subprocess.run(
@@ -498,6 +580,15 @@ TOOLS = [
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
     {
+        "name": "run_security_scan",
+        "description": (
+            "Phase 4b — Security & quality scan. Runs SpotBugs static analysis + "
+            "OWASP Dependency Check, then Claude AI reviews findings. "
+            "Call after tests pass, before ICA/deployment."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
         "name": "assess_change_risk",
         "description": "Phase 4a — AI scores the change risk (0–100) for ICA based on tests and PR metadata.",
         "input_schema": {
@@ -622,7 +713,11 @@ PHASE 3 — TEST
   run_tests_with_coverage()
   → If failed: generate_evidence_pack() → send_sdlc_notification(deploy_status="tests_failed") → STOP
 
-PHASE 4 — INSTANT CHANGE AUTHORIZATION (ICA)
+PHASE 4a — SECURITY & QUALITY SCAN
+  run_security_scan()
+  → If verdict=FAIL (critical CVEs): generate_evidence_pack() → send_sdlc_notification(deploy_status="security_failed") → STOP
+
+PHASE 4b — INSTANT CHANGE AUTHORIZATION (ICA)
   assess_change_risk(pr_title, test_passed, coverage_summary, files_changed=<estimate from context>)
   instant_change_authorization(risk_score, risk_category, recommendation, risk_factors, pr_title)
   → If authorized=false: generate_evidence_pack() → send_sdlc_notification(deploy_status="ica_blocked") → STOP
@@ -664,6 +759,7 @@ def make_dispatch(evidence: EvidencePack) -> dict:
         "analyze_requirements":     lambda i: analyze_requirements(i["requirements"], evidence),
         "run_build":                lambda i: run_build(evidence),
         "run_tests_with_coverage":  lambda i: run_tests_with_coverage(evidence),
+        "run_security_scan":        lambda i: run_security_scan(evidence),
         "assess_change_risk":       lambda i: assess_change_risk(**i, evidence=evidence),
         "instant_change_authorization": lambda i: instant_change_authorization(**i, evidence=evidence),
         "deploy_to_gaia":           lambda i: deploy_to_gaia(i["image_tag"], evidence),
