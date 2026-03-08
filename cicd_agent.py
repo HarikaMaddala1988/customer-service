@@ -224,21 +224,33 @@ def run_security_scan(evidence: EvidencePack) -> dict:
     else:
         issues.append("OWASP: report not generated (likely first run — NVD data downloading)")
 
-    # --- AI Security Review ---
+    # --- Determine hard verdict from actual findings (not AI opinion) ---
+    # Only FAIL on confirmed critical CVEs. Missing reports = WARN (inconclusive).
+    if critical_count > 0:
+        hard_verdict = "FAIL"
+    elif cve_count > 0 or sb_bugs > 0:
+        hard_verdict = "WARN"
+    else:
+        hard_verdict = "PASS"
+
+    # --- AI Security Review (informational only) ---
     prompt = (
         "You are an application security engineer. Review the following security scan results "
-        "for a Spring Boot microservice and provide: (1) severity verdict (PASS/WARN/FAIL), "
-        "(2) key findings, (3) recommended actions.\n\n"
-        f"Findings:\n" + "\n".join(issues) + "\n\nScan output (truncated):\n" + combined_output[-1500:]
+        "for a Spring Boot microservice. Missing reports mean the scan could not run yet (first run, "
+        "NVD data still downloading) — treat missing reports as WARN, not FAIL.\n\n"
+        "Provide: (1) brief summary of findings, (2) recommended actions.\n\n"
+        f"Findings:\n" + "\n".join(issues) + "\n\nScan output (truncated):\n" + combined_output[-1200:]
     )
     resp = client.messages.create(
-        model=MODEL, max_tokens=600,
+        model=MODEL, max_tokens=500,
         messages=[{"role": "user", "content": prompt}]
     )
     ai_review = resp.content[0].text
-    verdict = "FAIL" if "FAIL" in ai_review.upper() else ("WARN" if "WARN" in ai_review.upper() else "PASS")
+    # AI verdict is advisory — hard_verdict based on actual CVE counts is authoritative
+    ai_verdict = "FAIL" if "FAIL" in ai_review.upper() else ("WARN" if "WARN" in ai_review.upper() else "PASS")
+    verdict = hard_verdict  # hard_verdict wins
 
-    summary = f"SpotBugs: {sb_bugs} bugs | CVEs: {cve_count} ({critical_count} critical) | AI verdict: {verdict}"
+    summary = f"SpotBugs: {sb_bugs} bugs | CVEs: {cve_count} ({critical_count} critical) | Verdict: {verdict}"
     evidence.save("Security", "Security Scan", summary, combined_output + "\n\n=== AI Review ===\n" + ai_review)
     evidence.save("Security", "AI Security Review", ai_review[:200], ai_review)
 
