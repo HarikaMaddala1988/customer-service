@@ -388,16 +388,27 @@ def assess_change_risk(
         messages=[{"role": "user", "content": prompt}]
     )
     raw = resp.content[0].text.strip()
-    # Extract JSON from the response
-    start = raw.find("{")
-    end   = raw.rfind("}") + 1
-    data  = json.loads(raw[start:end]) if start >= 0 else {
+    # Extract JSON from the response — fall back to safe defaults on any parse error
+    _fallback = {
         "risk_score": 50, "risk_category": "MEDIUM",
         "risk_factors": ["Could not parse AI response"],
         "recommendation": "ESCALATE",
     }
+    try:
+        start = raw.find("{")
+        end   = raw.rfind("}") + 1
+        data  = json.loads(raw[start:end]) if start >= 0 else _fallback
+    except Exception:
+        data = _fallback
+    # Guard against missing keys in Claude's response
+    risk_score    = int(data.get("risk_score",    _fallback["risk_score"]))
+    risk_category = str(data.get("risk_category", _fallback["risk_category"]))
+    recommendation = str(data.get("recommendation", _fallback["recommendation"]))
+    risk_factors  = data.get("risk_factors", _fallback["risk_factors"])
+    data.update(risk_score=risk_score, risk_category=risk_category,
+                recommendation=recommendation, risk_factors=risk_factors)
     evidence.save("ICA", "Risk Assessment",
-                  f"{data['risk_category']} risk ({data['risk_score']}/100) — {data.get('recommendation', 'APPROVE')}",
+                  f"{risk_category} risk ({risk_score}/100) — {recommendation}",
                   raw)
     return data
 
