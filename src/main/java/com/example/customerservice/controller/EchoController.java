@@ -1,14 +1,18 @@
 package com.example.customerservice.controller;
 
-import org.springframework.http.ResponseEntity;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 public class EchoController {
 
+    private static final Logger logger = LoggerFactory.getLogger(EchoController.class);
+
     @GetMapping("/echo")
-    public ResponseEntity<String> echo() {
-        return ResponseEntity.ok("success");
+    public String echo() {
+        logger.info("Accessed /echo endpoint");
+        return "success";
     }
 }
