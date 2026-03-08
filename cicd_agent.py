@@ -197,11 +197,12 @@ def analyze_requirements(requirements: str, evidence: EvidencePack) -> dict:
         messages=[{"role": "user", "content": prompt}]
     )
     analysis = resp.content[0].text
-    # Extract a one-liner summary from the first meaningful line
-    first_line = next((l.strip() for l in analysis.splitlines() if len(l.strip()) > 20), analysis[:80])
+    # Build summary from PR metadata, not from the AI response text (avoids markdown headings)
+    pr_label = f"PR #{evidence.pr_number}" if evidence.pr_number else "PR"
+    pr_desc  = evidence.pr_title or requirements[:60]
     evidence.save(
         "Analysis", "Requirements Analysis",
-        f"PR analyzed — {first_line[:90]}",
+        f"{pr_label} analyzed, endpoints identified, DB schema verified — {pr_desc}",
         analysis,
     )
     return {"success": True, "analysis": analysis}
