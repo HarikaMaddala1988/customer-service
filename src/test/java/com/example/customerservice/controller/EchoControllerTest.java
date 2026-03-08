@@ -16,7 +16,7 @@ class EchoControllerTest {
     private MockMvc mockMvc;
 
     @Test
-    void getEcho_shouldReturnSuccess() throws Exception {
+    void echoEndpoint_returnsSuccess() throws Exception {
         mockMvc.perform(get("/echo"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("success"));
