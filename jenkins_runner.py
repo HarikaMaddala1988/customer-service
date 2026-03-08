@@ -30,17 +30,13 @@ from sdlc_orchestrator import (
     deploy_to_gaia,
     generate_evidence_pack,
     get_gaia_deployment_status,
-    get_jules_pipeline_status,
     instant_change_authorization,
     rollback_gaia_deployment,
     run_build,
     run_tests_with_coverage,
     send_sdlc_notification,
-    trigger_jules_pipeline,
     trigger_qa_agent,
 )
-
-JULES_PIPELINE = os.getenv("JULES_PIPELINE", "customer-service-deploy")
 
 
 def get_evidence(build_number: str) -> EvidencePack:
@@ -104,23 +100,6 @@ def phase_ica(args):
         sys.exit(1)
     print("ICA_APPROVED")
 
-
-def phase_pipeline(args):
-    ev = get_evidence(args.build_number)
-    trig = trigger_jules_pipeline(JULES_PIPELINE, args.merge_sha, ev)
-    print("PIPELINE_TRIGGERED:" + json.dumps(trig))
-    run_id = trig.get("pipeline_run_id")
-    status = {}
-    for i in range(20):
-        status = get_jules_pipeline_status(run_id)
-        print(f"POLL_{i+1}:" + str(status.get("status")))
-        if status.get("finished"):
-            break
-        time.sleep(5)
-    if not status.get("success"):
-        print("PIPELINE_FAILED")
-        sys.exit(1)
-    print("PIPELINE_SUCCESS")
 
 
 def phase_deploy(args):
@@ -187,7 +166,6 @@ PHASES = {
     "build":    phase_build,
     "test":     phase_test,
     "ica":      phase_ica,
-    "pipeline": phase_pipeline,
     "deploy":   phase_deploy,
     "qa-gate":  phase_qa_gate,
     "evidence": phase_evidence,
@@ -196,7 +174,7 @@ PHASES = {
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Jenkins SDLC Phase Runner")
-    parser.add_argument("phase", choices=PHASES.keys(), help="SDLC phase to run")
+    parser.add_argument("phase", choices=list(PHASES.keys()), help="SDLC phase to run")
     parser.add_argument("--build-number",  default="0")
     parser.add_argument("--pr-number",     default="1")
     parser.add_argument("--pr-title",      default="")

@@ -85,18 +85,8 @@ pipeline {
             }
         }
 
-        // ── PHASE 5 — JULES PIPELINE ───────────────────────────────────────
-        stage('Phase 5: Jules Pipeline') {
-            steps {
-                echo "=== PHASE 5: Trigger Jules CI/CD Pipeline ==="
-                dir("${PROJECT_DIR}") {
-                    bat "\"%PYTHON%\" jenkins_runner.py pipeline --build-number %BUILD_NUMBER% --merge-sha \"%MERGE_SHA%\""
-                }
-            }
-        }
-
-        // ── PHASE 6 — GAIA QA DEPLOYMENT ──────────────────────────────────
-        stage('Phase 6: Gaia QA Deploy') {
+        // ── PHASE 5 — GAIA QA DEPLOYMENT ──────────────────────────────────
+        stage('Phase 5: Gaia QA Deploy') {
             steps {
                 echo "=== PHASE 6: Deploy to Gaia QA Cluster ==="
                 dir("${PROJECT_DIR}") {
@@ -116,7 +106,7 @@ pipeline {
         }
 
         // ── PHASE 6b — QA GATE ─────────────────────────────────────────────
-        stage('Phase 6b: QA Gate') {
+        stage('Phase 6: QA Gate') {
             steps {
                 echo "=== PHASE 6b: QA Agent / Rollback ==="
                 dir("${PROJECT_DIR}") {
@@ -126,7 +116,7 @@ pipeline {
         }
 
         // ── PHASE 8 — EVIDENCE PACK ────────────────────────────────────────
-        stage('Phase 8: Evidence Pack') {
+        stage('Phase 7: Evidence Pack') {
             steps {
                 echo "=== PHASE 8: Generate HTML + JSON Evidence Pack ==="
                 dir("${PROJECT_DIR}") {
@@ -144,7 +134,7 @@ pipeline {
         }
 
         // ── PHASE 9 — NOTIFY ───────────────────────────────────────────────
-        stage('Phase 9: Notify') {
+        stage('Phase 8: Notify') {
             steps {
                 echo "=== PHASE 9: Send SDLC Outcome Email ==="
                 dir("${PROJECT_DIR}") {
