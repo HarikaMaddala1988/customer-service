@@ -1,5 +1,7 @@
 package com.example.customerservice.controller;
 
+import com.example.customerservice.dto.CreateCustomerRequest;
+import com.example.customerservice.dto.HelloResponse;
 import com.example.customerservice.dto.UpdateCustomerRequest;
 import com.example.customerservice.model.Customer;
 import com.example.customerservice.service.CustomerService;
@@ -9,23 +11,32 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/customers")
 @RequiredArgsConstructor
 public class CustomerController {
 
     private final CustomerService customerService;
 
-    @GetMapping("/{id}")
+    // ── GET /api/hello ────────────────────────────────────────────────────────
+    @GetMapping("/api/hello")
+    public ResponseEntity<HelloResponse> hello() {
+        return ResponseEntity.ok(new HelloResponse("Hello from Customer Service"));
+    }
+
+    // ── GET /api/customers/{id} ───────────────────────────────────────────────
+    @GetMapping("/api/customers/{id}")
     public ResponseEntity<Customer> getCustomer(@PathVariable Long id) {
         return ResponseEntity.ok(customerService.getCustomer(id));
     }
 
-    @PostMapping
-    public ResponseEntity<Customer> createCustomer(@Valid @RequestBody com.example.customerservice.dto.CreateCustomerRequest request) {
+    // ── POST /api/customers ───────────────────────────────────────────────────
+    @PostMapping("/api/customers")
+    public ResponseEntity<Customer> createCustomer(
+            @Valid @RequestBody CreateCustomerRequest request) {
         return ResponseEntity.status(201).body(customerService.createCustomer(request));
     }
 
-    @PutMapping("/{id}")
+    // ── PUT /api/customers/{id} ───────────────────────────────────────────────
+    @PutMapping("/api/customers/{id}")
     public ResponseEntity<Customer> updateCustomer(
             @PathVariable Long id,
             @Valid @RequestBody UpdateCustomerRequest request) {

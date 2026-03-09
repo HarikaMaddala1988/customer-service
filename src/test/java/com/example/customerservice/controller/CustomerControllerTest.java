@@ -34,6 +34,14 @@ class CustomerControllerTest {
     @MockBean
     private CustomerService customerService;
 
+    // ── GET /api/hello ────────────────────────────────────────────────────────
+    @Test
+    void getHello_returnsOkAndGreetingMessage() throws Exception {
+        mockMvc.perform(get("/api/hello"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Hello from Customer Service"));
+    }
+
     // ── GET /api/customers/{id} ───────────────────────────────────────────────
     @Test
     void getCustomer_returnsOkAndCustomer() throws Exception {
