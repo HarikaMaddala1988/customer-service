@@ -12,7 +12,7 @@ public class EchoController {
 
     @GetMapping("/echo")
     public String echo() {
-        logger.info("Accessed again /echo endpoint");
+        logger.info("Accessed again2 /echo endpoint");
         return "success";
     }
 }
